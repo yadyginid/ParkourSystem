@@ -302,32 +302,64 @@ void UParkourComponent::TimelineFinished()
 	}
 }
 
-void UParkourComponent::PerformParkour(const FParkourAction& Action, const FVector& LedgeLocation)
+void UParkourComponent::PerformParkour(const FParkourAction& ActionInput, const FVector& LedgeLocationInput)
 {
-	const UCapsuleComponent* Capsule = OwnerCharacter->GetCapsuleComponent();
-       
-	const FVector StartPoint = LedgeLocation 
-	   + (OwnerCharacter->GetActorForwardVector() * (Action.StartingOffset.X - Capsule->GetScaledCapsuleRadius())) 
-	   + FVector(0, 0, Action.StartingOffset.Z);
-    
-	// Используем более точный расчёт конечной точки из предыдущего ответа
-	FVector EndPoint = LedgeLocation + FVector(Action.LandedOffset.X, Action.LandedOffset.Y, 0.f);
-	EndPoint.Z += Capsule->GetScaledCapsuleHalfHeight();
+	FParkourAction FoundAction;
+	FVector LedgeLocation;
+	if (CanParkour(FoundAction, LedgeLocation))
+	{
+		const UCapsuleComponent* Capsule = OwnerCharacter->GetCapsuleComponent();
+		
+		const FVector StartPoint = LedgeLocation 
+			+ (OwnerCharacter->GetActorForwardVector() * (FoundAction.StartingOffset.X - Capsule->GetScaledCapsuleRadius())) 
+			+ FVector(0, 0, FoundAction.StartingOffset.Z);
+		
+		//const FVector EndPoint = LedgeLocation + FoundAction.LandedOffset;
+		FVector EndPoint = LedgeLocation + FVector(FoundAction.LandedOffset.X, FoundAction.LandedOffset.Y, 0.f);
+		EndPoint.Z += Capsule->GetScaledCapsuleHalfHeight();
+		
+		FHitResult SweepHitResult;
+		FCollisionQueryParams Params;
+		Params.AddIgnoredActor(OwnerCharacter);
+		const FCollisionShape CapsuleShape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
 
-	// Проверку на столкновение (Sweep) здесь можно пропустить для предсказания,
-	// так как сервер всё равно сделает финальную проверку.
-    
-	FReplicatedParkourState NewState;
-	NewState.ActionType = Action.ActionType;
-	NewState.StartLocation = StartPoint;
-	NewState.EndLocation = EndPoint;
-	NewState.Montage = Action.Montage;
-	NewState.PlayRate = (Action.AnimationCorrectionTime > 0.f) ? (1.f / Action.AnimationCorrectionTime) : 1.f;
-	NewState.ArcHeight = Action.ArcHeight;
-    
-	CurrentParkourState = NewState;
-	// Напрямую вызываем OnRep, чтобы запустить таймлайн немедленно
-	OnRep_CurrentParkourState(); 
+		const bool bHit = GetWorld()->SweepSingleByChannel(
+			SweepHitResult,
+			StartPoint,
+			StartPoint,
+			FQuat::Identity,
+			ECC_Visibility,
+			CapsuleShape,
+			Params
+		);
+		
+		if (bDrawDebugTraces)
+		{
+			DrawDebugCapsule(GetWorld(), StartPoint, Capsule->GetScaledCapsuleHalfHeight(), Capsule->GetScaledCapsuleRadius(), FQuat::Identity, bHit ? FColor::Red : FColor::Green, false, 5.f, 0, 2.f);
+		}
+		
+		if (bHit)
+		{
+			AActor* HitActor = SweepHitResult.GetActor();
+			UE_LOG(LogTemp, Error, TEXT("!!! SAFETY SWEEP BLOCKED! Hit Actor: [%s], Hit Component: [%s]"), 
+				*GetNameSafe(HitActor), 
+				*GetNameSafe(SweepHitResult.GetComponent()));
+			// ---
+			return; 
+		}
+
+		
+		FReplicatedParkourState NewState;
+		NewState.ActionType = FoundAction.ActionType;
+		NewState.StartLocation = StartPoint;
+		NewState.EndLocation = EndPoint;
+		NewState.Montage = FoundAction.Montage;
+		NewState.PlayRate = (FoundAction.AnimationCorrectionTime > 0.f) ? (1.f / FoundAction.AnimationCorrectionTime) : 1.f;
+		NewState.ArcHeight = FoundAction.ArcHeight;
+		
+		CurrentParkourState = NewState;
+		OnRep_CurrentParkourState(); 
+	}
 }
 
 void UParkourComponent::ServerPlayRootMotionMatchTarget_Implementation(FVector ClimbTargetLocation)
@@ -342,7 +374,7 @@ void UParkourComponent::PlayParkourAnimation()
 	// Если паркур ЗАКОНЧИЛСЯ
 	if (CurrentParkourState.ActionType == EParkourActionType::None)
 	{
-		OwnerMovementComponent->SetMovementMode(MOVE_Falling);
+		OwnerMovementComponent->SetMovementMode(MOVE_Walking);
 		// Возвращаем камере стандартное поведение
 		if (OwnerSpringArm)
 		{
