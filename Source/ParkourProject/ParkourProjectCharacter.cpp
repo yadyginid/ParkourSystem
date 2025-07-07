@@ -9,6 +9,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Public/Components/ParkourComponent.h"
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -16,6 +17,7 @@
 
 AParkourProjectCharacter::AParkourProjectCharacter()
 {
+	bReplicates = true;
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 		
@@ -49,6 +51,8 @@ AParkourProjectCharacter::AParkourProjectCharacter()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+
+	ParkourComponent = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
 }
 
 void AParkourProjectCharacter::BeginPlay()
@@ -66,8 +70,13 @@ void AParkourProjectCharacter::BeginPlay()
 	}
 }
 
-//////////////////////////////////////////////////////////////////////////
-// Input
+void AParkourProjectCharacter::OnParkourAction()
+{
+	if (GetCharacterMovement()->IsMovingOnGround())
+	{
+		ParkourComponent->OnParkourInput();
+	}
+}
 
 void AParkourProjectCharacter::SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent)
 {
@@ -75,8 +84,8 @@ void AParkourProjectCharacter::SetupPlayerInputComponent(class UInputComponent* 
 	if (UEnhancedInputComponent* EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
 		//Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		//EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &ACharacter::Jump);
+		//EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
 
 		//Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AParkourProjectCharacter::Move);
@@ -84,8 +93,8 @@ void AParkourProjectCharacter::SetupPlayerInputComponent(class UInputComponent* 
 		//Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &AParkourProjectCharacter::Look);
 
+		PlayerInputComponent->BindAction("Parkour", IE_Pressed, this, &AParkourProjectCharacter::OnParkourAction);
 	}
-
 }
 
 void AParkourProjectCharacter::Move(const FInputActionValue& Value)

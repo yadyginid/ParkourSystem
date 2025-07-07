@@ -8,6 +8,8 @@
 #include "ParkourProjectCharacter.generated.h"
 
 
+class UParkourComponent;
+
 UCLASS(config=Game)
 class AParkourProjectCharacter : public ACharacter
 {
@@ -51,12 +53,15 @@ protected:
 			
 
 protected:
-	// APawn interface
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UParkourComponent* ParkourComponent;
+	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	
-	// To add mapping context
 	virtual void BeginPlay();
 
+	void OnParkourAction();
+	
 public:
 	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
