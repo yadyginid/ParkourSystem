@@ -103,6 +103,8 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Parkour|Timeline")
 	TObjectPtr<UCurveFloat> ParkourTimelineCurve;
 
+	EParkourActionType LocalCurrentActionType;
+
 private:
 	// --- Объявления функций ---
 	bool CanParkour(FParkourAction& OutAction, FVector& OutLedgeLocation) const;
@@ -140,4 +142,6 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<UAnimMontage> Montage = nullptr;
+
+	void PerformParkour(const FParkourAction& Action, const FVector& LedgeLocation);
 };

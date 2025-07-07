@@ -10,7 +10,7 @@
 UParkourComponent::UParkourComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = false;
+	PrimaryComponentTick.bStartWithTickEnabled = true;
 	SetIsReplicatedByDefault(true);
 }
 
@@ -65,6 +65,7 @@ void UParkourComponent::OnParkourInput()
 	FVector DummyLocation;
 	if (CanParkour(DummyAction, DummyLocation))
 	{
+		PerformParkour(DummyAction, DummyLocation);
 		Server_TryPerformParkour();
 	}
 	else
@@ -85,9 +86,10 @@ void UParkourComponent::Server_TryPerformParkour_Implementation()
 			+ (OwnerCharacter->GetActorForwardVector() * (FoundAction.StartingOffset.X - Capsule->GetScaledCapsuleRadius())) 
 			+ FVector(0, 0, FoundAction.StartingOffset.Z);
 		
-		const FVector EndPoint = LedgeLocation + FoundAction.LandedOffset;
-
-
+		//const FVector EndPoint = LedgeLocation + FoundAction.LandedOffset;
+		FVector EndPoint = LedgeLocation + FVector(FoundAction.LandedOffset.X, FoundAction.LandedOffset.Y, 0.f);
+		EndPoint.Z += Capsule->GetScaledCapsuleHalfHeight();
+		
 		FHitResult SweepHitResult;
 		FCollisionQueryParams Params;
 		Params.AddIgnoredActor(OwnerCharacter);
@@ -134,6 +136,9 @@ void UParkourComponent::Server_TryPerformParkour_Implementation()
 
 void UParkourComponent::OnRep_CurrentParkourState()
 {
+	if(LocalCurrentActionType == CurrentParkourState.ActionType) return;
+	LocalCurrentActionType = CurrentParkourState.ActionType;
+	
 	// Если начинается паркур
 	if (CurrentParkourState.ActionType != EParkourActionType::None)
 	{
@@ -286,7 +291,7 @@ void UParkourComponent::TimelineUpdate(float Alpha)
 
 void UParkourComponent::TimelineFinished()
 {
-	SetComponentTickEnabled(false);
+	//SetComponentTickEnabled(false);
 	if (OwnerCharacter && OwnerCharacter->HasAuthority())
 	{
 		// Используем более надежный способ сброса состояния
@@ -295,6 +300,34 @@ void UParkourComponent::TimelineFinished()
 		
 		OnRep_CurrentParkourState(); 
 	}
+}
+
+void UParkourComponent::PerformParkour(const FParkourAction& Action, const FVector& LedgeLocation)
+{
+	const UCapsuleComponent* Capsule = OwnerCharacter->GetCapsuleComponent();
+       
+	const FVector StartPoint = LedgeLocation 
+	   + (OwnerCharacter->GetActorForwardVector() * (Action.StartingOffset.X - Capsule->GetScaledCapsuleRadius())) 
+	   + FVector(0, 0, Action.StartingOffset.Z);
+    
+	// Используем более точный расчёт конечной точки из предыдущего ответа
+	FVector EndPoint = LedgeLocation + FVector(Action.LandedOffset.X, Action.LandedOffset.Y, 0.f);
+	EndPoint.Z += Capsule->GetScaledCapsuleHalfHeight();
+
+	// Проверку на столкновение (Sweep) здесь можно пропустить для предсказания,
+	// так как сервер всё равно сделает финальную проверку.
+    
+	FReplicatedParkourState NewState;
+	NewState.ActionType = Action.ActionType;
+	NewState.StartLocation = StartPoint;
+	NewState.EndLocation = EndPoint;
+	NewState.Montage = Action.Montage;
+	NewState.PlayRate = (Action.AnimationCorrectionTime > 0.f) ? (1.f / Action.AnimationCorrectionTime) : 1.f;
+	NewState.ArcHeight = Action.ArcHeight;
+    
+	CurrentParkourState = NewState;
+	// Напрямую вызываем OnRep, чтобы запустить таймлайн немедленно
+	OnRep_CurrentParkourState(); 
 }
 
 void UParkourComponent::ServerPlayRootMotionMatchTarget_Implementation(FVector ClimbTargetLocation)
@@ -313,7 +346,7 @@ void UParkourComponent::PlayParkourAnimation()
 		// Возвращаем камере стандартное поведение
 		if (OwnerSpringArm)
 		{
-			OwnerSpringArm->bDoCollisionTest = true;
+			//OwnerSpringArm->bDoCollisionTest = true;
 		}
 		return;
 	}
@@ -324,7 +357,7 @@ void UParkourComponent::PlayParkourAnimation()
 		// Отключаем столкновения для камеры, чтобы она плавно проходила сквозь объекты
 		if (OwnerSpringArm)
 		{
-			OwnerSpringArm->bDoCollisionTest = false;
+			//OwnerSpringArm->bDoCollisionTest = false;
 		}
 
 		OwnerMovementComponent->SetMovementMode(MOVE_Flying);
